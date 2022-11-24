@@ -307,5 +307,5 @@ int main(int argc, const char * argv[]) {
 
     auto end = std::chrono::high_resolution_clock::now();
     if (verbose) printf("[+] Processing time: %lfs\n", ((std::chrono::duration<double>)((end - start))).count());
-    if (verbose) printf("[+] Total=%lu, valid=%lu,\n", total, valid);
+    if (verbose) printf("[+] Total=%lu, valid=%lu\n", total, valid);
 }

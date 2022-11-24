@@ -14,7 +14,7 @@ set(BUILD_OBJECT_LIBS OFF)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/jsoncpp-1.9.5")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/3rd_party/jsoncpp-1.9.5/include")
 
-find_package(Boost REQUIRED OPTIONAL_COMPONENTS geometry)
+find_package(Boost REQUIRED OPTIONAL_COMPONENTS geometry asio)
 include_directories("${Boost_INCLUDE_DIRS}")
 
 if(POLICY CMP0068)
@@ -28,7 +28,7 @@ add_executable(geofinder
 )
 add_dependencies(geofinder jsoncpp_static)
 set_property(TARGET geofinder PROPERTY CXX_STANDARD 14)
-target_link_libraries(geofinder PRIVATE jsoncpp_static ${Boost_GEOMETRY_LIBRARY})
+target_link_libraries(geofinder PRIVATE jsoncpp_static ${Boost_GEOMETRY_LIBRARY} ${Boost_ASIO_LIBRARY})
 
 if(WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj /wd4996 /wd4267 /wd4068")
