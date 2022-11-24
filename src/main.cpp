@@ -28,9 +28,89 @@ int load_json(const std::string& path, Json::Value * out_value, Json::String * e
 
 class GeoMap {
 public:
+    class Point {
+    public:
+        Point(float _x, float _y) : x(_x), y(_y) {}
+        float x;
+        float y;
+    };
+    
+    class Ring {
+    public:
+        static Ring from_json_value(const Json::Value& ring) {
+            Ring r;
+            size_t num_points = ring.size();
+            for (size_t point_index = 0; point_index < num_points; point_index++){
+                const Json::Value& p = ring[(Json::ArrayIndex)point_index];
+                r.points.emplace_back(p[0].asFloat(), p[1].asFloat());
+            }
+            return r;
+        }
+
+        Point& operator[](size_t index) {
+            if (index > points.size()) {
+                throw std::invalid_argument("index out of range");
+            } else {
+                return points[index];
+            }
+        }
+
+        const Point& operator[](size_t index) const {
+            if (index > points.size()) {
+                throw std::invalid_argument("index out of range");
+            } else {
+                return points[index];
+            }
+        }
+
+        size_t size() const {
+            return points.size();
+        }
+
+        std::vector<Point> points;
+    };
+
+    class Polygon {
+    public:
+        static Polygon polygon_from_json(const Json::Value& polygon) {
+            Polygon p;
+            size_t num_rings = polygon.size();
+            for (size_t ring_index = 0; ring_index < num_rings; ring_index++){
+                const Json::Value& ring = polygon[(Json::ArrayIndex)ring_index];
+                Ring r = Ring::from_json_value(ring);
+                p.rings.emplace_back(r);
+            }
+            return p;
+        }
+
+        Ring& operator[](size_t index) {
+            if (index > rings.size()) {
+                throw std::invalid_argument("index out of range");
+            } else {
+                return rings[index];
+            }
+        }
+
+        const Ring& operator[](size_t index) const {
+            if (index > rings.size()) {
+                throw std::invalid_argument("index out of range");
+            } else {
+                return rings[index];
+            }
+        }
+
+        size_t size() const {
+            return rings.size();
+        }
+
+        std::vector<Ring> rings;
+    };
+
     typedef boost::geometry::model::point<float, 2, boost::geometry::cs::cartesian> point;
     typedef boost::geometry::model::box<point> box;
-    typedef std::pair<box, std::pair<Json::Value, Json::Value>> value;
+    typedef std::pair<Polygon, Json::Value> polygon_with_property_t;
+    typedef std::pair<box, polygon_with_property_t> value;
+    typedef std::vector<polygon_with_property_t> query_t;
 
     boost::geometry::index::rtree<value, boost::geometry::index::quadratic<16>> rtree;
 
@@ -64,7 +144,7 @@ public:
         return true;
     }
 
-    void query(float longitude, float latitude, std::vector<std::pair<Json::Value, Json::Value>>& out_query, bool multi = false) {
+    void query(float longitude, float latitude, std::vector<std::pair<Polygon, Json::Value>>& out_query, bool multi = false) {
         std::vector<value> result_n;
         box query_box(point(longitude, latitude), point(longitude, latitude));
         this->rtree.query(boost::geometry::index::intersects(query_box), std::back_inserter(result_n));
@@ -83,29 +163,28 @@ private:
         const float POS_INF = std::numeric_limits<float>::infinity();
         const float NEG_INF = -std::numeric_limits<float>::infinity();
         float minX = POS_INF, minY = POS_INF, maxX = NEG_INF, maxY = NEG_INF;
-        Json::Value& polygon_0 = polygon[0];
-        size_t num_points = polygon_0.size();
+
+        Polygon p = Polygon::polygon_from_json(polygon);
+        Ring& ring_0 = p[0];
+
+        size_t num_points = ring_0.size();
         for (size_t point_index = 0; point_index < num_points; point_index++){
-            Json::Value& p = polygon_0[(Json::ArrayIndex)point_index];
-            minX = std::min(minX, p[0].asFloat());
-            minY = std::min(minY, p[1].asFloat());
-            maxX = std::max(maxX, p[0].asFloat());
-            maxY = std::max(maxY, p[1].asFloat());
+            Point& p = ring_0[point_index];
+            minX = std::min(minX, p.x);
+            minY = std::min(minY, p.y);
+            maxX = std::max(maxX, p.x);
+            maxY = std::max(maxY, p.y);
         }
         box b(point(minX, minY), point(maxX, maxY));
-        this->rtree.insert(std::make_pair(b, std::make_pair(polygon, properties)));
+        this->rtree.insert(std::make_pair(b, std::make_pair(p, properties)));
     }
 
-    bool inside_polygon(const Json::Value& rings, float centre_x, float centre_y) {
+    bool inside_polygon(const Polygon& polygon, float centre_x, float centre_y) {
         bool inside = false;
-        for (size_t i = 0, len = rings.size(); i < len; i++) {
-            const Json::Value& ring = rings[(Json::ArrayIndex)i];
+        for (size_t i = 0, len = polygon.size(); i < len; i++) {
+            const Ring& ring = polygon[i];
             for (size_t j = 0, len2 = ring.size(), k = len2 - 1; j < len2; k = j++) {
-                auto p1x = ring[(int)j][0].asFloat();
-                auto p1y = ring[(int)j][1].asFloat();
-                auto p2x = ring[(int)k][0].asFloat();
-                auto p2y = ring[(int)k][1].asFloat();
-                if (ray_intersect(centre_x, centre_y, p1x, p1y, p2x, p2y)) {
+                if (ray_intersect(centre_x, centre_y, ring[j], ring[k])) {
                     inside = !inside;
                 }
             }
@@ -113,8 +192,8 @@ private:
         return inside;
     }
 
-    bool ray_intersect(float px, float py, float p1x, float p1y, float p2x, float p2y) {
-        return ((p1y > py) != (p2y > py)) && (px < (p2x - p1x) * (py - p1y) / (p2y - p1y) + p1x);
+    bool ray_intersect(float px, float py, const Point& p1, const Point& p2) {
+        return ((p1.y > py) != (p2.y > py)) && (px < (p2.x - p1.x) * (py - p1.y) / (p2.y - p1.y) + p1.x);
     }
 };
 
@@ -174,14 +253,13 @@ int main(int argc, const char * argv[]) {
         return EXIT_FAILURE;
     }
 
-    std::vector<std::pair<Json::Value, Json::Value>> result;
-
     if (verbose) printf("[+] Loading annotation JSON file from %s...\r\n", annotation_json_file.c_str());
     if (!load_json(annotation_json_file, &annotation_root, &errs)) {
         std::cout << "[!] " << errs << std::endl;
         return EXIT_FAILURE;
     }
 
+    GeoMap::query_t result;
     Json::Value& images = annotation_root["images"];
     size_t total = 0, valid = 0, failed = 0;
     if (images.isArray()) {
@@ -208,7 +286,7 @@ int main(int argc, const char * argv[]) {
         }
         if (verbose) printf("\r\n");
     } else {
-        if (verbose) printf("[!] Invalid annotation JSON\r\n");
+        printf("[!] Invalid annotation JSON\r\n");
         return EXIT_FAILURE;
     }
 
@@ -216,6 +294,7 @@ int main(int argc, const char * argv[]) {
     Json::StreamWriterBuilder wBuilder;
     wBuilder["commentStyle"] = "None";
     wBuilder["indentation"] = "";
+    wBuilder["precision"] = 6;
     std::unique_ptr<Json::StreamWriter> writer(wBuilder.newStreamWriter());
     std::ofstream outputFileStream(output);
     writer->write(annotation_root, &outputFileStream);
