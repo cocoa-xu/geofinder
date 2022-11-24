@@ -13,6 +13,8 @@
 #include <boost/geometry/geometries/point.hpp>
 #include <boost/geometry/geometries/box.hpp>
 #include <boost/geometry/index/rtree.hpp>
+#include <boost/asio.hpp>
+#include <boost/thread.hpp>
 #include <boost/foreach.hpp>
 
 int load_json(const std::string& path, Json::Value * out_value, Json::String * errs) {
@@ -199,10 +201,12 @@ private:
 
 int main(int argc, const char * argv[]) {
     int verbose = 0;
+    int jobs = 0;
     static struct option long_options[] =
     {
         {"border-json",     required_argument,  0, 'b'},
         {"annotation-json", required_argument,  0, 'a'},
+        {"jobs",            optional_argument,  0, 'j'},
         {"output",          required_argument,  0, 'o'},
         {"verbose",         no_argument,        &verbose, 1},
         {0, 0, 0, 0}
@@ -231,11 +235,17 @@ int main(int argc, const char * argv[]) {
             case 'o':
                 output = optarg;
                 break;
+            case 'j':
+                jobs = atoi(optarg);
+                break;
             default:
                 break;
         }
     }
 
+    if (jobs <= 0) {
+        jobs = std::thread::hardware_concurrency();
+    }
     auto start = std::chrono::high_resolution_clock::now();
 
     Json::Value annotation_root, geo_maps_root;
@@ -259,32 +269,28 @@ int main(int argc, const char * argv[]) {
         return EXIT_FAILURE;
     }
 
-    GeoMap::query_t result;
     Json::Value& images = annotation_root["images"];
-    size_t total = 0, valid = 0, failed = 0;
+    size_t total = 0, valid = 0;
     if (images.isArray()) {
         total = images.size();
+        boost::asio::thread_pool pool(jobs);
         if (verbose) printf("[+] Querying for %lu images...\r\n", total);
         for (size_t index = 0; index < total; ++index) {
-            if (verbose) {
-                printf("\r[-] Current querying for image %lu...", index);
-                fflush(stdout);
-            }
             Json::Value& image = images[(Json::ArrayIndex)index];
             if (image["longitude"].isNumeric() && image["latitude"].isNumeric()) {
-                float longitude = image["longitude"].asFloat();
-                float latitude = image["latitude"].asFloat();
-                geo_map.query(longitude, latitude, result);
-                if (result.size() == 1 && result[0].second["country"].isString()) {
-                    image["country"] = result[0].second["country"].asString();
-                } else {
-                    failed++;
-                }
-                result.clear();
+                boost::asio::post(pool, [&image, &geo_map]() {
+                    float longitude = image["longitude"].asFloat();
+                    float latitude = image["latitude"].asFloat();
+                    GeoMap::query_t result;
+                    geo_map.query(longitude, latitude, result);
+                    if (result.size() == 1 && result[0].second["country"].isString()) {
+                        image["country"] = result[0].second["country"].asString();
+                    }
+                });
                 valid++;
             }
         }
-        if (verbose) printf("\r\n");
+        pool.join();
     } else {
         printf("[!] Invalid annotation JSON\r\n");
         return EXIT_FAILURE;
@@ -301,5 +307,5 @@ int main(int argc, const char * argv[]) {
 
     auto end = std::chrono::high_resolution_clock::now();
     if (verbose) printf("[+] Processing time: %lfs\n", ((std::chrono::duration<double>)((end - start))).count());
-    if (verbose) printf("[+] Total=%lu, valid=%lu, failed=%lu\n", total, valid, failed);
+    if (verbose) printf("[+] Total=%lu, valid=%lu,\n", total, valid);
 }
