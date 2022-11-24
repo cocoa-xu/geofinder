@@ -1,6 +1,8 @@
 test:
   stage: build
   image: ubuntu:20.04
+  variables:
+    DEBIAN_FRONTEND: noninteractive
   script:
     - apt-get update -q -y && apt-get install -y git libboost-dev cmake gcc g++
     - mkdir -p build
