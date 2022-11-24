@@ -16,3 +16,20 @@ $ geofinder -b borders.json -a train.json -o train-country.json --verbose
 [+] Processing time: 19.047447s
 [+] Total=2686843, valid=2678609
 ```
+
+Example `train.json` file:
+```json
+{
+    "images": [
+        {
+            "longitude": -4.25,
+            "latitude": 55.86
+        }
+    ]
+}
+```
+
+Corresponding output JSON:
+```json
+{"images":[{"country":"GB","latitude":55.86,"longitude":-4.25}]}
+```
