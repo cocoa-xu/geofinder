@@ -6,5 +6,5 @@ test:
   script:
     - apt-get update -q -y && apt-get install -y git libboost-dev cmake gcc g++
     - mkdir -p build
-    - cd build && cmake .. && bin/geofinder -b ../borders.json -a ../test/test.json -o test-out.json --verbose
+    - cd build && cmake .. && make -j`nproc` && bin/geofinder -b ../borders.json -a ../test/test.json -o test-out.json --verbose
     - diff test-out.json ../test/test-out.json
