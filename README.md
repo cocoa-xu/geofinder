@@ -2,7 +2,7 @@
 
 Adding a `country` info to each image in the iNaturist annotation JSON file.
 
-This software is developed for my own usage when pre-processing the iNaturist daya, and if it happens to be useful to you, I'll be very glad and hope it can help you.
+This software is developed for my own usage when pre-processing the iNaturist dataset, and if it happens to be useful to you, I'll be very glad and hope it can help you
 
 ### Usage
 
